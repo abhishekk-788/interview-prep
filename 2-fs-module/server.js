@@ -1,26 +1,35 @@
 const fs = require("fs");
-const path = './input.txt';
+const path = "./input.txt";
 
-fs.readFile(path, 'utf8', (err, data) => { 
-    if (err) {
-        console.log('Error reading file', err);
-        return;
-    }
-    console.log(data);
-})
+// fs.readFile(path, 'utf8', (err, data) => {
+//     if (err) {
+//         console.log('Error reading file', err);
+//         return;
+//     }
+//     console.log(data);
+// })
 
-fs.readdir('./files', (err, files) => {
+const items = fs.readdirSync("./files/", (err, files) => {
   if (err) {
     console.log("Error reading directory", err);
     return;
   }
-    files.forEach(file => console.log(file));
+  return files;
 });
 
-fs.writeFile('output.txt', 'Hello Node.js', (err) => { 
-    if (err) {
-        console.log(err);
-        return;
-    }
-    console.log('File created');
+console.log(items);
+const files = items.filter((item) => {
+  const itemPath = "./files/" + item;
+  console.log(itemPath);
+  return fs.statSync(itemPath).isFile();
 });
+
+console.log(files);
+
+// fs.writeFile('output.txt', 'Hello Node.js', (err) => {
+//     if (err) {
+//         console.log(err);
+//         return;
+//     }
+//     console.log('File created');
+// });
