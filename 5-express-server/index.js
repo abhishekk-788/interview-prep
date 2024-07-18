@@ -1,55 +1,120 @@
 const express = require("express");
+const { connectToMongoDB } = require("./database");
 
 const app = express();
 app.use(express.json());
 
-let books = [
-  { id: 1, title: "Book 1", author: "Author 1" },
-  { id: 2, title: "Book 2", author: "Author 2" },
-];
+const isValidBook = (book) => {
+  if (typeof book !== "object" || book === null) return false;
 
-app.get("/books", (req, res) => {
-  res.json(books);
+  const requiredFields = ["title", "author"];
+  for (const field of requiredFields) {
+    if (!book.hasOwnProperty(field) || typeof book[field] !== "string") {
+      return false;
+    }
+  }
+  return true;
+};
+
+app.get("/books", async (req, res) => {
+  try {
+    const client = await connectToMongoDB();
+    const books = await client.collection("books").find({}).toArray();
+    res.json(books);
+  } catch (err) {
+    console.log(err);
+    res.status(404).json({ error: "Internal Server Error" });
+  }
 });
 
-app.post("/books", (req, res) => {
-  console.log(req.body);
+app.post("/books", async (req, res) => {
+  try {
+    const client = await connectToMongoDB();
+    const books = await client.collection("books").find({}).toArray();
 
-  let newBook = req.body;
-  newBook.id = books.length + 1;
-  books.push(newBook);
+    const booksLength = books.length;
 
-  res.status(201).json(newBook);
+    if (Array.isArray(req.body)) {
+      if (req.body.length === 0) {
+        throw new Error("Empty array provided");
+      }
+
+      const books = req.body.map((book, index) => {
+        if (!isValidBook(book)) {
+          throw new Error("Invalid book object schema");
+        }
+        return { ...book, id: booksLength + 1 };
+      });
+      const insertBooks = await client.collection("books").insertMany(books);
+
+      console.log(insertBooks);
+
+      res.status(201).json(books);
+    } else {
+      let newBook = req.body;
+
+      if (!isValidBook(newBook)) {
+        throw new Error("Invalid book object schema");
+      }
+
+      newBook.id = booksLength + 1;
+
+      const insertBook = await client.collection("books").insertOne(newBook);
+      console.log(insertBook);
+
+      res.status(201).json(newBook);
+    }
+  } catch (err) {
+    console.log(err);
+    res.status(404).json({ error: err.message || "Internal Server Error" });
+  }
 });
 
-app.put("/books/:id", (req, res) => {
-    const bookId = parseInt(req.params.id);
+app.put("/books/:id", async (req, res) => {
+  try {
+    const bookId = parseInt(req.params.id, 10);
     const updatedBook = req.body;
-    const index = books.findIndex(book => book.id == bookId);
-    
-    if (index == -1) {
-        res.status(404).send('Book not found');
+    if (!isValidBook(updatedBook)) {
+      throw new Error("Invalid book object schema");
     }
-    else {
-        books[index] = { ...books[index], ...updatedBook }
-        res.json(books[index]);
+
+    const client = await connectToMongoDB();
+    const updateBookResult = await client
+      .collection("books")
+      .updateOne({ id: bookId }, { $set: updatedBook }, { upsert: false });
+
+    if (updateBookResult.matchedCount === 0) {
+      res.status(404).json({ error: "Book not found" });
+    } else {
+      res
+        .status(200)
+        .json({ message: "Book updated successfully", updatedBookResult });
     }
+  } catch (err) {
+    console.error(err);
+    res.status(400).json({ error: err.message || "Bad Request" });
+  }
 });
-  
-app.delete("/books/:id", (req, res) => { 
-    const bookId = parseInt(req.params.id);
-    const index = books.findIndex(book => book.id == bookId);
 
-    if (index == -1) {
-        res.status(404).json({ error: 'Book not found' });
-    }
-    else {
-        const deletedBook = books[index];
-        books.splice(index, 1);
+app.delete("/books/:id", async (req, res) => {
+  try {
+    const client = await connectToMongoDB();
+    const collection = client.collection("books");
+    
+    const bookId = parseInt(req.params.id, 10);
 
-        res.status(200).json(deletedBook);
+    const result = await collection.deleteOne({ id: bookId });
+
+    if (result.deletedCount === 0) {
+      res.status(404).json({ error: "Book not found" });
+    } else {
+      res.status(200).json({ message: "Book deleted successfully", result });
     }
-})
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+});
 
 app.listen(3000, (req, res) => {
   console.log("Server is running");
